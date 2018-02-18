@@ -1,87 +1,142 @@
-import edu.stanford.nlp.ling.CoreAnnotations;
-import edu.stanford.nlp.ling.CoreLabel;
-import edu.stanford.nlp.ling.HasWord;
-import edu.stanford.nlp.ling.TaggedWord;
-import edu.stanford.nlp.parser.nndep.DependencyParser;
-import edu.stanford.nlp.pipeline.Annotation;
-import edu.stanford.nlp.pipeline.StanfordCoreNLP;
-import edu.stanford.nlp.process.DocumentPreprocessor;
-import edu.stanford.nlp.semgraph.SemanticGraph;
-import edu.stanford.nlp.semgraph.SemanticGraphCoreAnnotations;
-import edu.stanford.nlp.semgraph.SemanticGraphEdge;
-import edu.stanford.nlp.semgraph.semgrex.SemgrexMatcher;
-import edu.stanford.nlp.semgraph.semgrex.SemgrexPattern;
-import edu.stanford.nlp.tagger.maxent.MaxentTagger;
-import edu.stanford.nlp.trees.GrammaticalRelation;
-import edu.stanford.nlp.trees.GrammaticalStructure;
-import edu.stanford.nlp.trees.TreeLemmatizer;
-import edu.stanford.nlp.util.CoreMap;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
-import java.io.StringReader;
+import java.io.IOException;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
+import java.util.Hashtable;
 import java.util.List;
-import java.util.Properties;
+
 
 public class GigawordParser {
-    /**
-     * Takes in a directory and returns an iterator of Strings
-     * over all the files in the directory
-     */
 
-    Properties properties;
-    DependencyParser depParser;
-    MaxentTagger tokenizer;
-    StanfordCoreNLP pipeline;
 
-    public GigawordParser() {
-        // tokenizer = new MaxentTagger(MaxentTagger.DEFAULT_JAR_PATH);
-        // lemmatizer = new TreeLemmatizer();
-        // depParser = DependencyParser.loadFromModelFile(DependencyParser.DEFAULT_MODEL);
-        Properties props = new Properties();
-        props.put("annotators", "tokenize, ssplit, pos, lemma, ner, parse");
-        pipeline = new StanfordCoreNLP(props);
+    StringBuilder texts;
+    enum Tag{
+        DOC,
+        HEADLINE,
+        DATELINE,
+        TEXT,
+        P,
+        GWENG;
     }
 
-    public List<SemanticGraph> parse(String text){
-        List<SemanticGraph> graphs = new ArrayList<SemanticGraph>();
-        DocumentPreprocessor splitter = new DocumentPreprocessor(new StringReader(text));
-        for (List<HasWord> sentence : splitter) {
-            List<TaggedWord> tagged = tokenizer.tagSentence(sentence);
-            GrammaticalStructure gs = depParser.predict(tagged);
-            graphs.add(new SemanticGraph(gs.typedDependenciesEnhancedPlusPlus()));
-        }
-        return graphs;
-    }
 
-    public List<SemanticGraph> pipe(String text){
-        Annotation document = new Annotation(text);
-        pipeline.annotate(document);
-        List<CoreMap> sentences = document.get(CoreAnnotations.SentencesAnnotation.class);
-        List<SemanticGraph> graphs = new ArrayList<SemanticGraph>();
-        for(CoreMap sentence: sentences) {
-            SemanticGraph dependencies = sentence.get(
-                    SemanticGraphCoreAnnotations.EnhancedPlusPlusDependenciesAnnotation.class);
-            graphs.add(dependencies);
-        }
-        return graphs;
-    }
+    public String parse(SequenceInputStream file) {
+        SAXParserFactory factory = SAXParserFactory.newInstance();
+        factory.setValidating(true);
+        SAXParser saxParser;
+        texts = new StringBuilder();
+        {
+            try {
+                saxParser = factory.newSAXParser();
 
-    public static void main(String[] args) {
-        GigawordParser p = new GigawordParser();
-        String text = "It was the first vote in 30 years in which 88-year-old Balaguer, who has \n" +
-                "dominated politics in this Caribbean country for decades, was not a candidate. \n";
-        System.out.println(text);
-        List<SemanticGraph> graphs = p.pipe(text);
-        SemgrexPattern pattern = SemgrexPattern.compile("{tag:/VB.*/}=verb >=reln {ner:DURATION}=duration");
-        for (SemanticGraph g : graphs){
-            System.out.println(g);
-            System.out.println(g.findAllRelns(GrammaticalRelation.valueOf("nmod:for")));
-            SemgrexMatcher matcher = pattern.matcher(g);
-            while (matcher.find()) {
-                System.out.println(matcher.getNode("verb") + " " +
-                        matcher.getNode("reln") + " " +
-                        matcher.getNode("duration"));
+                DefaultHandler handler = new GigawordHandler();
+                saxParser.parse(file, handler);
+            } catch (ParserConfigurationException e) {
+                System.err.println("ParserConfigurationException for file: " + file.toString());
+            } catch (SAXException e) {
+                System.err.println("SAXException for file: " + file.toString());
+                e.printStackTrace();
+            } catch (IOException e) {
+                System.err.println("IOException for file: " + file.toString());
             }
+        }
+        return texts.toString();
+    }
+
+    class GigawordHandler extends DefaultHandler {
+
+        private Hashtable notations = new Hashtable();
+        private Hashtable entities = new Hashtable();
+
+        boolean isDoc = false;
+        boolean isHeadline = false;
+        boolean isDateline = false;
+        boolean isText = false;
+        boolean isPara = false;
+        boolean isRoot = false;
+
+
+        @Override
+        public void startElement(String uri, String localName,
+                                 String qName, Attributes attributes) throws SAXException {
+
+            switch(Tag.valueOf(qName.toUpperCase())){
+                case DOC:
+                    isDoc = true;
+                    break;
+                case HEADLINE:
+                    isHeadline = true;
+                    break;
+                case DATELINE:
+                    isDateline = true;
+                    break;
+                case TEXT:
+                    isText = true;
+                    break;
+                case P:
+                    isPara = true;
+                    break;
+                case GWENG:
+                    isRoot = true;
+                    break;
+            }
+        }
+
+        @Override
+        public void endElement(String uri, String localName, String qName) throws SAXException {
+            switch(Tag.valueOf(qName.toUpperCase())){
+                case DOC:
+                    isDoc = false;
+                    break;
+                case HEADLINE:
+                    isHeadline = false;
+                    break;
+                case DATELINE:
+                    isDateline = false;
+                    break;
+                case TEXT:
+                    isText = false;
+                    break;
+                case P:
+                    isPara = false;
+                    break;
+                case GWENG:
+                    isRoot = false;
+                    break;
+            }
+        }
+
+        @Override
+        public void characters(char[] ch, int start, int length) throws SAXException {
+            if (isHeadline){
+                texts.append(new String(ch, start, length).trim());
+            }
+            else if (isPara){
+                texts.append(new String(ch, start, length).trim());
+            }
+            else if (isText){
+                texts.append(new String(ch, start, length).trim());
+            }
+            else if (isDateline){
+            }
+        }
+
+        @Override
+        public void notationDecl(String name, String publicId, String systemId) throws SAXException {
+            System.out.println(name);
+            notations.put(name, publicId);
+        }
+
+
+        @Override
+        public void unparsedEntityDecl(String name, String publicId, String systemId, String notationName) throws SAXException {
+            entities.put(name, publicId);
         }
     }
 }

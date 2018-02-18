@@ -1,19 +1,23 @@
-import java.io.IOException;
+import javax.sound.midi.Sequence;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 public class Runner {
 
+    public static final Path DTD_FILE = Paths.get("/home/craa/Documents/gigaword/docs/gigaword.dtd");
     private static final String GIGAWORD_DIR = "/home/craa/Documents/gigaword";
     private static final Path SAVE_DIR =  Paths.get("/home/craa/Documents/gigaword/save");
     private static final String[] PAPER_NAMES = {"afe", "apw", "nyt", "xie"};
 
     public static void parseFile(Path file) {
-        List<String> parsedText = parseSgmlFromFile(file);
+        GigawordParser parser = new GigawordParser();
+        String texts = parser.parse(wrapWithRoot(file));
 
         PatternExtractor extractor;
         try {
@@ -21,12 +25,7 @@ public class Runner {
         } catch (IOException e) {
             return;
         }
-        for (String text : parsedText) {
-            extractor.pipe(text);
-        }
-    }
-
-    private static List<String> parseSgmlFromFile(Path file) {
+        extractor.pipe(texts);
 
     }
 
@@ -45,5 +44,19 @@ public class Runner {
                 .filter(Objects::nonNull)
                 .parallel()
                 .forEach(Runner::parseFile);
+    }
+
+    private static SequenceInputStream wrapWithRoot(Path file) {
+        List<InputStream> streams = null;
+        try {
+            streams = Arrays.asList(
+                    Files.newInputStream(DTD_FILE),
+                    new ByteArrayInputStream("<GWENG>".getBytes()),
+                    Files.newInputStream(file),
+                    new ByteArrayInputStream("</GWENG>".getBytes()));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new SequenceInputStream(Collections.enumeration(streams));
     }
 }
