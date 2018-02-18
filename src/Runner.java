@@ -3,10 +3,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class Runner {
 
@@ -17,7 +14,7 @@ public class Runner {
 
     public static void parseFile(Path file) {
         GigawordParser parser = new GigawordParser();
-        String texts = parser.parse(wrapWithRoot(file));
+        ArrayList<String> texts = parser.parse(wrapWithRoot(file));
 
         PatternExtractor extractor;
         try {
@@ -25,8 +22,9 @@ public class Runner {
         } catch (IOException e) {
             return;
         }
-        extractor.pipe(texts);
-
+        for (String text : texts) {
+            extractor.pipe(text);
+        }
     }
 
     public static void main(String[] args) {

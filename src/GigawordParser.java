@@ -7,6 +7,7 @@ import org.xml.sax.helpers.DefaultHandler;
 
 import java.io.IOException;
 import java.io.SequenceInputStream;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
@@ -14,8 +15,8 @@ import java.util.List;
 
 public class GigawordParser {
 
-
-    StringBuilder texts;
+    ArrayList<String> texts;
+    StringBuilder buffer;
     enum Tag{
         DOC,
         HEADLINE,
@@ -26,11 +27,12 @@ public class GigawordParser {
     }
 
 
-    public String parse(SequenceInputStream file) {
+    public ArrayList<String> parse(SequenceInputStream file) {
         SAXParserFactory factory = SAXParserFactory.newInstance();
         factory.setValidating(true);
         SAXParser saxParser;
-        texts = new StringBuilder();
+        texts = new ArrayList<>();
+        buffer = new StringBuilder();
         {
             try {
                 saxParser = factory.newSAXParser();
@@ -46,7 +48,7 @@ public class GigawordParser {
                 System.err.println("IOException for file: " + file.toString());
             }
         }
-        return texts.toString();
+        return texts;
     }
 
     class GigawordHandler extends DefaultHandler {
@@ -96,15 +98,21 @@ public class GigawordParser {
                     break;
                 case HEADLINE:
                     isHeadline = false;
+                    texts.add(buffer.toString());
+                    buffer = new StringBuilder();
                     break;
                 case DATELINE:
                     isDateline = false;
                     break;
                 case TEXT:
                     isText = false;
+                    texts.add(buffer.toString());
+                    buffer = new StringBuilder();
                     break;
                 case P:
                     isPara = false;
+                    texts.add(buffer.toString());
+                    buffer = new StringBuilder();
                     break;
                 case GWENG:
                     isRoot = false;
@@ -115,13 +123,13 @@ public class GigawordParser {
         @Override
         public void characters(char[] ch, int start, int length) throws SAXException {
             if (isHeadline){
-                texts.append(new String(ch, start, length).trim());
+                buffer.append(new String(ch, start, length));
             }
             else if (isPara){
-                texts.append(new String(ch, start, length).trim());
+                buffer.append(new String(ch, start, length));
             }
             else if (isText){
-                texts.append(new String(ch, start, length).trim());
+                buffer.append(new String(ch, start, length));
             }
             else if (isDateline){
             }
